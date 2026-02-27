@@ -3,7 +3,7 @@ const express = require('express')
 const router = express.Router()
 const multer = require('multer')
 const sharp = require('sharp')
-const { PutObjectCommand } = require('@aws-sdk/client-s3')
+const { PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3')
 const r2Client = require('../config/r2')
 const { v4: uuidv4 } = require('uuid')
 const { authenticateAdmin } = require('../middleware/auth')
@@ -47,6 +47,28 @@ router.post('/', authenticateAdmin, upload.array('images', 10), async (req, res)
 
     const imageUrls = await Promise.all(uploadPromises)
     res.json({ message: 'Images uploadées avec succès', urls: imageUrls })
+  } catch (error) {
+    res.status(500).json({ message: error.message })
+  }
+})
+
+router.delete('/', authenticateAdmin, async (req, res) => {
+  try {
+    const { urls } = req.body
+    if (!urls?.length) return res.status(400).json({ message: 'URLs manquantes' })
+
+    const deletePromises = urls.map((url) => {
+      try {
+        const key = url.replace(`${process.env.R2_PUBLIC_URL}/`, '')
+        return r2Client.send(new DeleteObjectCommand({
+          Bucket: process.env.R2_BUCKET_NAME,
+          Key: key,
+        }))
+      } catch { return Promise.resolve() }
+    })
+
+    await Promise.all(deletePromises)
+    res.json({ message: 'Images supprimées' })
   } catch (error) {
     res.status(500).json({ message: error.message })
   }
